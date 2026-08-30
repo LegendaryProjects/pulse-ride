@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 const Navbar = () => {
-  const [activeTab, setActiveTab] = useState('Dashboard');
-
   return (
     <nav className="flex items-center justify-between px-8 py-4 bg-[#121212] border-b border-[#282828] text-white">
       {/* Left: Brand Name */}
@@ -13,24 +11,9 @@ const Navbar = () => {
       {/* Middle: Navigation Links */}
       <div className="hidden md:flex space-x-8 mt-1">
         <button
-          onClick={() => setActiveTab('Dashboard')}
-          className={`pb-1 transition-all duration-200 ${
-            activeTab === 'Dashboard'
-              ? 'text-white font-bold border-b-2 border-[#1ED760]'
-              : 'text-[#B3B3B3] font-medium border-b-2 border-transparent hover:text-white'
-          }`}
+          className="pb-1 transition-all duration-200 text-white font-bold border-b-2 border-[#1ED760]"
         >
           Dashboard
-        </button>
-        <button
-          onClick={() => setActiveTab('History')}
-          className={`pb-1 transition-all duration-200 ${
-            activeTab === 'History'
-              ? 'text-white font-bold border-b-2 border-[#1ED760]'
-              : 'text-[#B3B3B3] font-medium border-b-2 border-transparent hover:text-white'
-          }`}
-        >
-          History
         </button>
       </div>
 

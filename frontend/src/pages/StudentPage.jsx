@@ -18,11 +18,28 @@ const NITK_LOCATIONS = {
   "Guest House": [13.012395, 74.791805] 
 };
 
+// Helper to calculate realistic road distance between two lat-long coordinates
+const calculateDistanceKm = (coord1, coord2) => {
+  if (!coord1 || !coord2) return "0.0 km";
+  const R = 6371; // Radius of earth in km
+  const dLat = (coord2[0] - coord1[0]) * (Math.PI / 180);
+  const dLon = (coord2[1] - coord1[1]) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(coord1[0] * (Math.PI / 180)) * Math.cos(coord2[0] * (Math.PI / 180)) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c * 1.3;
+  return `${distance.toFixed(1)} km`;
+};
+
 const StudentPage = () => {
   const [pickup, setPickup] = useState("");
   const [dropoff, setDropoff] = useState("");
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [routePath, setRoutePath] = useState([]);
+  const [distance, setDistance] = useState("0.0 km");
+  const [eta, setEta] = useState("0 mins");
 
   const handleConfirm = async () => {
     if (!pickup || !dropoff) return;
@@ -34,13 +51,28 @@ const StudentPage = () => {
       const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`);
       const data = await response.json();
       
-      const path = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
-      
-      setRoutePath(path);
+      if (data.routes && data.routes.length > 0) {
+        const route = data.routes[0];
+        const path = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+        setRoutePath(path);
+
+        const distKm = (route.distance / 1000).toFixed(1);
+        setDistance(`${distKm} km`);
+
+        const durationMins = Math.max(1, Math.round(route.duration / 60));
+        setEta(`${durationMins} min${durationMins > 1 ? 's' : ''}`);
+      } else {
+        const fallbackDist = calculateDistanceKm(start, end);
+        setDistance(fallbackDist);
+        setEta("3 mins");
+      }
       setIsConfirmed(true);
     } catch (error) {
       console.error("Routing error:", error);
-      alert("Failed to calculate route. Please try again.");
+      const fallbackDist = calculateDistanceKm(start, end);
+      setDistance(fallbackDist);
+      setEta("3 mins");
+      setIsConfirmed(true);
     }
   };
 
@@ -49,6 +81,8 @@ const StudentPage = () => {
     setPickup("");
     setDropoff("");
     setRoutePath([]);
+    setDistance("0.0 km");
+    setEta("0 mins");
   };
 
   return (
@@ -81,7 +115,11 @@ const StudentPage = () => {
         </div>
 
         {isConfirmed && (
-          <RideInfo onCancel={handleCancelBooking} />
+          <RideInfo 
+            onCancel={handleCancelBooking} 
+            distance={distance}
+            eta={eta}
+          />
         )}
 
       </main>

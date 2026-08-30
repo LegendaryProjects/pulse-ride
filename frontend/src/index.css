@@ -8,7 +8,37 @@ html, body {
   min-height: 100vh;
 }
 
-/* 2. Dark mode hack for the free Leaflet map */
+/* 2. 100% Free & No-API-Key Dark Map Styling for Leaflet Tile Pane */
 .leaflet-tile-pane {
-  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+  filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(110%) saturate(0.8);
+}
+
+/* 3. Custom Leaflet styling for professional Google Maps look */
+.leaflet-container {
+  outline: none !important;
+  font-family: inherit;
+  background-color: #121212 !important;
+}
+
+.leaflet-tooltip {
+  background-color: #181818 !important;
+  color: #ffffff !important;
+  border: 1px solid #383838 !important;
+  border-radius: 6px !important;
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+}
+
+.leaflet-tooltip-top:before {
+  border-top-color: #181818 !important;
+}
+.leaflet-tooltip-bottom:before {
+  border-bottom-color: #181818 !important;
+}
+.leaflet-tooltip-left:before {
+  border-left-color: #181818 !important;
+}
+.leaflet-tooltip-right:before {
+  border-right-color: #181818 !important;
 }

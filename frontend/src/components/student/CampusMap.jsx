@@ -17,42 +17,87 @@ const CampusMap = ({ locations, pickup, setPickup, dropoff, setDropoff, routePat
   };
 
   return (
-    <div className="w-full h-[400px] rounded-lg overflow-hidden border border-[#282828] z-0 shadow-lg relative">
-      <MapContainer center={mapCenter} zoom={16} scrollWheelZoom={true} className="w-full h-full bg-[#121212]" zoomControl={false}>
+    <div className="w-full h-[400px] rounded-xl overflow-hidden border border-[#282828] z-0 shadow-xl relative bg-[#121212]">
+      <MapContainer 
+        center={mapCenter} 
+        zoom={16} 
+        scrollWheelZoom={true} 
+        className="w-full h-full bg-[#121212]" 
+        zoomControl={false}
+      >
         <TileLayer 
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
-          attribution='&copy; OpenStreetMap' 
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' 
         />
+
+        {/* Google Maps style dark and static green route path with crisp casing */}
+        {routePath && routePath.length > 0 && (
+          <>
+            <Polyline 
+              positions={routePath} 
+              pathOptions={{ 
+                color: '#064e3b', 
+                weight: 7, 
+                opacity: 0.8,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }} 
+            />
+            <Polyline 
+              positions={routePath} 
+              pathOptions={{ 
+                color: '#15803d', 
+                weight: 4.5, 
+                opacity: 1,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }} 
+            />
+          </>
+        )}
         
-        {/* Render all 10 NITK Nodes */}
+        {/* Render filled small dots (diameter bigger than path thickness) */}
         {Object.entries(locations).map(([name, coords]) => {
           const isPickup = pickup === name;
           const isDropoff = dropoff === name;
           
-          let color = '#555555'; // Default unselected
-          if (isPickup) color = '#1ED760'; // Green for Pickup
-          if (isDropoff) color = '#E50914'; // Red for Dropoff
+          let fillColor = '#52525b'; // Default unselected
+          let strokeColor = '#a1a1aa';
+          let radius = 4.5;
+          let weight = 1.5;
+
+          if (isPickup) {
+            fillColor = '#15803d'; // Dark green filled dot for Pickup
+            strokeColor = '#ffffff';
+            radius = 6.5;
+            weight = 2;
+          } else if (isDropoff) {
+            fillColor = '#dc2626'; // Red filled dot for Dropoff
+            strokeColor = '#ffffff';
+            radius = 6.5;
+            weight = 2;
+          }
 
           return (
             <CircleMarker 
               key={name}
               center={coords} 
-              radius={isPickup || isDropoff ? 10 : 6} 
-              pathOptions={{ color, fillColor: '#121212', fillOpacity: 1, weight: 3 }}
+              radius={radius} 
+              pathOptions={{ 
+                color: strokeColor, 
+                fillColor: fillColor, 
+                fillOpacity: 1, 
+                weight: weight 
+              }}
               eventHandlers={{ click: () => handleMarkerClick(name) }}
               className="cursor-pointer"
             >
-              <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-                <span className="font-bold text-black">{name}</span>
+              <Tooltip direction="top" offset={[0, -8]} opacity={1}>
+                <span className="font-semibold text-white">{name}</span>
               </Tooltip>
             </CircleMarker>
           );
         })}
-
-        {/* Draw snapped roadway path */}
-        {routePath && routePath.length > 0 && (
-          <Polyline positions={routePath} pathOptions={{ color: '#1ED760', weight: 4, opacity: 0.8 }} className="animate-pulse" />
-        )}
       </MapContainer>
     </div>
   );

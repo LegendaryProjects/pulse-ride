@@ -45,9 +45,9 @@ const DriverPage = () => {
   const [currentLegDistance, setCurrentLegDistance] = useState("1.2 km");
 
   useEffect(() => {
-    if (currentStopIndex < ROUTE_SEQUENCE.length - 1) {
-      const from = NITK_LOCATIONS[ROUTE_SEQUENCE[currentStopIndex]];
-      const to = NITK_LOCATIONS[ROUTE_SEQUENCE[currentStopIndex + 1]];
+    if (currentStopIndex > 0 && currentStopIndex < ROUTE_SEQUENCE.length) {
+      const from = NITK_LOCATIONS[ROUTE_SEQUENCE[currentStopIndex - 1]];
+      const to = NITK_LOCATIONS[ROUTE_SEQUENCE[currentStopIndex]];
       setCurrentLegDistance(calculateDistanceKm(from, to));
     } else {
       setCurrentLegDistance("0.0 km");

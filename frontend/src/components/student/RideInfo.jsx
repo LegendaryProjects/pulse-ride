@@ -1,6 +1,6 @@
 import React from 'react';
 
-const RideInfo = ({ onCancel, onScanQR }) => {
+const RideInfo = ({ onCancel, onScanQR, distance = "1.2 km", eta = "4 mins" }) => {
   return (
     <div className="bg-[#181818] p-4 rounded-lg shadow-md mt-6 flex flex-col md:flex-row items-center justify-between gap-6 border border-[#282828] animate-fade-in">
       
@@ -29,13 +29,13 @@ const RideInfo = ({ onCancel, onScanQR }) => {
         {/* Distance */}
         <div className="flex flex-col items-center">
           <span className="text-[#B3B3B3] text-xs font-medium uppercase tracking-wider mb-1">Distance</span>
-          <span className="text-white font-bold text-base md:text-lg">1.2 km</span>
+          <span className="text-white font-bold text-base md:text-lg">{distance}</span>
         </div>
 
         {/* ETA */}
         <div className="flex flex-col items-center">
           <span className="text-[#B3B3B3] text-xs font-medium uppercase tracking-wider mb-1">ETA</span>
-          <span className="text-[#1ED760] font-bold text-base md:text-lg">4 mins</span>
+          <span className="text-[#1ED760] font-bold text-base md:text-lg">{eta}</span>
         </div>
 
       </div>
