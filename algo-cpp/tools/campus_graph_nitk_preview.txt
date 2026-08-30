@@ -1,0 +1,28 @@
+# NITK Campus Graph — Adjacency List Preview
+# (Readable format for manual verification before feeding to engine_main)
+
+Generated: 2026-08-30T05:47:19.484Z
+Distance source: haversine distance * 1.3 (fallback)
+Average speed: 15 km/h
+Max direct distance: 400m
+
+---
+
+LHC-C                     -- LHC-D                     :   212m,  0.85min
+LHC-C                     -- Guest House               :   300m,  1.20min
+LHC-C                     -- Girls Hostel              :   369m,  1.48min
+LHC-C                     -- Library                   :   357m,  1.43min
+LHC-C                     -- Main Building             :   231m,  0.92min
+LHC-D                     -- Mega Towers               :   395m,  1.58min
+LHC-D                     -- Library                   :   271m,  1.08min
+LHC-D                     -- Main Building             :   275m,  1.10min
+Guest House               -- Girls Hostel              :   336m,  1.34min
+Girls Hostel              -- Girls Co-Op               :   339m,  1.36min
+Girls Hostel              -- Main Building             :   245m,  0.98min
+Adke Circle               -- Karavali Hostel           :   203m,  0.81min
+Adke Circle               -- Library                   :   245m,  0.98min
+Karavali Hostel           -- Mega Towers               :   349m,  1.40min
+Library                   -- Main Building             :   185m,  0.74min
+
+---
+Total edges: 15

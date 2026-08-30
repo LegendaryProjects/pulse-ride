@@ -1,0 +1,10 @@
+{
+  "name": "campus-routing-engine",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/**/*.test.js",
+    "test:interactive": "node tools/interactive_engine_tester.js",
+    "build:engine": "g++ -std=c++17 -I. -Isrc src/cli/engine_main.cpp src/core/models.cpp src/graph/campus_routing.cpp src/validation/constraint_engine.cpp src/scoring/cost_engine.cpp src/routing/route_insertion_engine.cpp src/routing/candidate_vehicle_generator.cpp src/optimizer/fleet_optimizer.cpp src/io/json_io.cpp -o engine_main.exe"
+  }
+}
