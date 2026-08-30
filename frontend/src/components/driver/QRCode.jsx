@@ -1,35 +1,36 @@
 import React, { useState } from 'react';
 
 const QRCode = () => {
-  // Toggle this state to see the Wait vs Good to Go UI change
   const [isReadyToGo, setIsReadyToGo] = useState(true);
 
   return (
-    <div className="bg-[#181818] border border-[#282828] rounded-lg p-4 flex flex-col gap-4 w-full md:w-80 shrink-0">
+    <div className="bg-[#181818] border border-[#282828] rounded-lg p-4 flex flex-col justify-between w-full md:w-80 shrink-0">
       
-      {/* QR Code Placeholder */}
-      <div className="bg-[#121212] border border-[#282828] aspect-square rounded flex flex-col items-center justify-center">
-        <div className="border-4 border-dashed border-[#555555] w-3/4 h-3/4 flex items-center justify-center rounded-lg">
-          <span className="text-[#B3B3B3] font-medium tracking-wide">QR CODE</span>
+      <div className="flex flex-col gap-4">
+        {/* QR Code Placeholder */}
+        <div className="bg-[#121212] border border-[#282828] aspect-square rounded flex flex-col items-center justify-center">
+          <div className="border-4 border-dashed border-[#555555] w-3/4 h-3/4 flex items-center justify-center rounded-lg">
+            <span className="text-[#B3B3B3] font-medium tracking-wide">QR CODE</span>
+          </div>
         </div>
-      </div>
 
-      {/* Passenger Stats */}
-      <div className="flex flex-col gap-2">
-        <div className="bg-[#121212] border border-[#282828] px-4 py-3 rounded flex justify-between items-center">
-          <span className="text-[#B3B3B3] text-sm font-medium">Boarding</span>
-          <span className="text-[#1ED760] font-bold text-lg">5</span>
-        </div>
-        
-        <div className="bg-[#121212] border border-[#282828] px-4 py-3 rounded flex justify-between items-center">
-          <span className="text-[#B3B3B3] text-sm font-medium">Dropping Off</span>
-          <span className="text-white font-bold text-lg">10</span>
+        {/* Passenger Stats */}
+        <div className="flex flex-col gap-2">
+          <div className="bg-[#121212] border border-[#282828] px-4 py-3 rounded flex justify-between items-center">
+            <span className="text-[#B3B3B3] text-sm font-medium">Boarding</span>
+            <span className="text-[#1ED760] font-bold text-lg">5</span>
+          </div>
+          
+          <div className="bg-[#121212] border border-[#282828] px-4 py-3 rounded flex justify-between items-center">
+            <span className="text-[#B3B3B3] text-sm font-medium">Dropping Off</span>
+            <span className="text-white font-bold text-lg">10</span>
+          </div>
         </div>
       </div>
 
       {/* Status Indicator */}
       <div 
-        className={`mt-2 px-4 py-3 rounded border font-bold flex items-center justify-center gap-2 transition-colors ${
+        className={`mt-4 px-4 py-3 rounded border font-bold flex items-center justify-center gap-2 transition-colors ${
           isReadyToGo 
             ? 'bg-[#1ED760]/10 border-[#1ED760] text-[#1ED760]' 
             : 'bg-[#E50914]/10 border-[#E50914] text-[#E50914]'
