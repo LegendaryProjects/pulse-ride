@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Pulse Ride - Intelligent Campus Mobility & Shared Ride System",
   "scripts": {
+    "start": "cd backend-node && node src/server.js",
+    "dev:backend": "cd backend-node && node src/server.js",
+    "dev:frontend": "cd frontend && npm run dev",
     "start:backend": "cd backend-node && node src/server.js",
     "start:frontend": "cd frontend && npm run dev",
     "build:frontend": "cd frontend && npm run build",
