@@ -13,7 +13,7 @@ This module powers the campus-demand prediction behind Pulse Ride. It trains a m
 - Returns a recommended vehicle based on predicted crowd size
 - Short-circuits weekends and holidays to return zero demand automatically
 
-## Project structure
+## Structure
 
 - `src/pipeline/preprocess.py` — prepares time-based features and location encoding
 - `src/pipeline/train.py` — loads data, tunes hyperparameters, trains the model, and saves it
