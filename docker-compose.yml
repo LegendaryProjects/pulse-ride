@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  ml-service:
+    build:
+      context: ./ml-python
+      dockerfile: Dockerfile
+    container_name: pulse-ml
+    env_file:
+      - ./ml-python/.env
+    ports:
+      - "8000:8000"
+    restart: on-failure
+
+  backend:
+    build:
+      context: ./backend-node
+      dockerfile: Dockerfile
+    container_name: pulse-backend
+    env_file:
+      - ./backend-node/.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ml-service
+    restart: on-failure
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pulse-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: on-failure
+
+# Optional: add a Postgres service if desired later
+#  db:
+#    image: postgres:15-alpine
+#    environment:
+#      POSTGRES_USER: pulse
+#      POSTGRES_PASSWORD: pulse
+#      POSTGRES_DB: pulse
+#    ports:
+#      - "5432:5432"
+#    volumes:
+#      - pgdata:/var/lib/postgresql/data
+
+#volumes:
+#  pgdata:
