@@ -1,23 +1,52 @@
 @import "tailwindcss";
 
-/* 1. Force the global background to be dark to fix white scrolling */
-html, body {
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+body {
   background-color: #121212;
   color: #ffffff;
   margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100vw;
   min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* 2. 100% Free & No-API-Key Dark Map Styling for Leaflet Tile Pane */
+#root {
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 2. Dark Map Styling for Leaflet Tile Pane */
 .leaflet-tile-pane {
   filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(110%) saturate(0.8);
 }
 
-/* 3. Custom Leaflet styling for professional Google Maps look */
+/* 3. Custom Leaflet styling */
 .leaflet-container {
   outline: none !important;
   font-family: inherit;
   background-color: #121212 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
 }
 
 .leaflet-tooltip {

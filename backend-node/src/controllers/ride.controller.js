@@ -1,234 +1,263 @@
-const dbService = require('../services/db.service');
-const { calculateOptimizedRoute } = require('../services/cppEngine');
-const mlService = require('../services/ml.service');
+const db = require('../db');
+const batchManager = require('../services/batchManager.service');
 
-const logDemandForML = async (nodeId) => {
+// 1. Student Requests a Ride
+const requestRide = async (req, res) => {
   try {
-    const now = new Date();
-    const recordDate = now.toISOString().split('T')[0];
-    const recordTime = now.toTimeString().split(' ')[0];
-    const dayOfWeek = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(now);
+    const { pickup_location, dropoff_location, passenger_count } = req.body;
+    const student_id = (req.user && req.user.id) ? req.user.id : 1;
 
-    await db.query(`
-      INSERT INTO ml_demand_history (record_date, record_time, day_of_week, node_id, student_count)
-      VALUES ($1, $2, $3, $4, 1)
-    `, [recordDate, recordTime, dayOfWeek, nodeId]);
+    if (!pickup_location || !dropoff_location) {
+      return res.status(400).json({ error: 'Pickup and Dropoff locations are required.' });
+    }
+
+    // Immediate check: Is there any driver active who has started their job (state = 'IDLE' or 'ON_TRIP')?
+    const activeVehiclesRes = await db.query("SELECT * FROM vehicles WHERE state IN ('IDLE', 'ON_TRIP')");
+    if (activeVehiclesRes.rows.length === 0) {
+      return res.json({
+        success: false,
+        noDrivers: true,
+        status: 'NO_VEHICLES_AVAILABLE',
+        error: 'No active drivers available. All campus shuttles are currently off-duty. Please ask a driver to click "Start Job" first.'
+      });
+    }
+
+    // Insert ride request with status 'REQUESTED'
+    const result = await db.query(
+      `INSERT INTO ride_requests (student_id, pickup_location, dropoff_location, passenger_count, status)
+       VALUES ($1, $2, $3, $4, 'REQUESTED') RETURNING *`,
+      [student_id, pickup_location, dropoff_location, passenger_count || 1]
+    );
+
+    const ride = result.rows[0];
+    const io = req.app.get('socketio');
+
+    // Add to 30-sec batch queue for driver dispatch
+    batchManager.addRequest(ride, io);
+
+    res.status(201).json({
+      success: true,
+      message: 'Ride request confirmed. Vehicle is being dispatched.',
+      rideId: ride.id,
+      ride
+    });
+
   } catch (error) {
-    console.error('ML Logging failed silently:', error.message);
+    console.error('Request Ride Error:', error.message);
+    res.status(500).json({ error: 'Failed to create ride request: ' + error.message });
   }
 };
 
-const requestRide = async (req, res) => {
-  
+// 2. Get 30-sec Batch Window Status
+const getBatchStatus = (req, res) => {
+  res.json({
+    success: true,
+    data: batchManager.getBatchStatus()
+  });
+};
+
+// 3. Force Instant Batch Dispatch (Triggered on demand or auto)
+const forceDispatchBatch = async (req, res) => {
   try {
-    const studentId = req.user.id; 
-    const now = new Date();
+    await batchManager.forceDispatch();
+    res.json({
+      success: true,
+      message: 'Batch dispatched successfully'
+    });
+  } catch (error) {
+    console.error('Force Dispatch Error:', error.message);
+    res.status(500).json({ error: 'Failed to dispatch batch: ' + error.message });
+  }
+};
 
-    const userCheck = await db.query('SELECT is_blocked, blocked_until FROM users WHERE id = $1', [studentId]);
-    const user = userCheck.rows[0];
+// 4. Get Student Active Ride
+const getStudentActiveRide = async (req, res) => {
+  try {
+    const student_id = (req.user && req.user.id) ? req.user.id : (req.query.studentId || 1);
 
-    if (user.is_blocked) {
-      const unblockDate = new Date(user.blocked_until);
+    const result = await db.query(
+      `SELECT r.*, v.type as vehicle_type, v.vehicle_number, v.capacity
+       FROM ride_requests r
+       LEFT JOIN vehicles v ON r.assigned_vehicle_id = v.id
+       WHERE r.student_id = $1 AND r.status IN ('REQUESTED', 'ASSIGNED', 'PICKED_UP')
+       ORDER BY r.id DESC LIMIT 1`,
+      [student_id]
+    );
 
-      if (now < unblockDate) {
-        // Block is still active
-        return res.status(403).json({ 
-          error: `Account blocked due to multiple no-shows. You can book rides again on ${unblockDate.toLocaleString()}` 
-        });
-      } else {
-        // 1-week block has expired. Wipe their slate clean.
-        await db.query(
-          'UPDATE users SET is_blocked = false, penalty_count = 0, blocked_until = NULL WHERE id = $1', 
-          [studentId]
-        );
+    if (result.rows.length === 0) {
+      return res.json({ success: true, activeRide: null });
+    }
+
+    res.json({ success: true, activeRide: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch active ride' });
+  }
+};
+
+// 5. Scan QR Code (2-Step Check-in: 1st Scan = Boarding, 2nd Scan = Deboarding/Complete)
+const scanQR = async (req, res) => {
+  try {
+    const { rideId, vehicleId, locationNodeId, stopLocation, qrData, qrString } = req.body;
+    const io = req.app.get('socketio');
+
+    let scannedStop = stopLocation || locationNodeId;
+    let scannedVehicleId = vehicleId;
+
+    // Parse camera scanned QR code JSON if provided
+    const rawQr = qrData || qrString;
+    if (rawQr && typeof rawQr === 'string') {
+      try {
+        const parsed = JSON.parse(rawQr);
+        if (parsed.stop) scannedStop = parsed.stop;
+        if (parsed.vehicleId) scannedVehicleId = parsed.vehicleId;
+      } catch (e) {
+        if (rawQr.startsWith('STOP_')) {
+          const parts = rawQr.split('_');
+          if (parts.length >= 2) scannedStop = parts[1];
+        }
       }
     }
 
-    const { riderId, pickup, dropoff } = req.body;
-    const io = req.app.get('socketio'); 
+    // 1. Resolve Target Ride Request ID
+    let targetRideId = rideId;
+    if (!targetRideId && req.user && req.user.id) {
+      const studentRideRes = await db.query(
+        "SELECT id FROM ride_requests WHERE student_id = $1 AND status IN ('ASSIGNED', 'REQUESTED', 'PICKED_UP') ORDER BY id DESC LIMIT 1",
+        [req.user.id]
+      );
+      targetRideId = studentRideRes.rows[0]?.id;
+    }
 
-    //  Log the request in PostgreSQL
-    const ride = await dbService.createRideRequest(riderId, pickup, dropoff);
+    if (!targetRideId) {
+      const fallbackRideRes = await db.query(
+        "SELECT id FROM ride_requests WHERE status IN ('ASSIGNED', 'REQUESTED', 'PICKED_UP') ORDER BY id DESC LIMIT 1"
+      );
+      targetRideId = fallbackRideRes.rows[0]?.id;
+    }
 
-    //  Fetch the current state of the entire campus fleet
-    const activeFleet = await dbService.getActiveFleet();
+    if (!targetRideId) {
+      return res.status(404).json({ error: 'No active ride found for QR scan verification.' });
+    }
 
-    //  Send data to C++ for the Greedy Minimum-Cost Insertion algorithm
-    const optimizationResult = await calculateOptimizedRoute({
-      newRequest: ride,
-      fleetState: activeFleet
-    });
+    const rideRes = await db.query('SELECT * FROM ride_requests WHERE id = $1', [targetRideId]);
+    if (rideRes.rows.length === 0) return res.status(404).json({ error: 'Ride request not found.' });
 
-    // Update the database with the C++ engine's decision
-    await dbService.updateVehicleRoute(
-      optimizationResult.vehicleId, 
-      ride.id, 
-      optimizationResult.route
-    );
-
-    //  Instantly notify the assigned driver's dashboard via WebSockets
-    io.to(`vehicle_${optimizationResult.vehicleId}`).emit('new_route_assigned', {
-      rideId: ride.id,
-      pickup,
-      dropoff,
-      eta: optimizationResult.eta_mins
-    });
-
-    res.json({ success: true, match: optimizationResult });
-
-  } catch (error) {
-    console.error('🔥 EXACT CRASH CAUSE:', error.message, '\nStack:', error.stack); 
-    res.status(500).json({ error: 'Failed to optimize and assign ride.' });
-  }
-};
-
-const scanQR = async (req, res) => {
-  try {
-    const { riderId, vehicleId, locationNodeId } = req.body;
-    const io = req.app.get('socketio');
-
-    // Fetch the student's active ride
-    const rideRes = await db.query('SELECT * FROM ride_requests WHERE id = $1', [riderId]);
-    if (rideRes.rows.length === 0) return res.status(404).json({ error: 'Ride not found' });
-    
     const ride = rideRes.rows[0];
-    if (ride.assigned_vehicle_id !== vehicleId) return res.status(400).json({ error: 'Wrong vehicle' });
-
     let newStatus = ride.status;
+    let actionType = 'BOARDING';
     let actionMessage = '';
 
-    // Determine if this scan is for a Pickup or a Dropoff
-    if (ride.pickup_location === locationNodeId && ride.status === 'ASSIGNED') {
+    // Determine if Boarding (Pickup) or Deboarding (Dropoff)
+    if (ride.status === 'ASSIGNED' || ride.status === 'REQUESTED') {
       newStatus = 'PICKED_UP';
-      actionMessage = 'Student Picked Up';
-    } else if (ride.dropoff_location === locationNodeId && ride.status === 'PICKED_UP') {
+      actionType = 'BOARDING';
+      actionMessage = 'Student boarded successfully!';
+    } else if (ride.status === 'PICKED_UP') {
       newStatus = 'COMPLETED';
-      actionMessage = 'Student Dropped Off';
+      actionType = 'DROPPING';
+      actionMessage = 'Student arrived at destination! Trip completed.';
     } else {
-      return res.status(400).json({ error: 'Scan invalid or already processed at this location.' });
+      return res.status(400).json({ error: `Ride is already ${ride.status}.` });
     }
 
-    // Update the database
-    await db.query('UPDATE ride_requests SET status = $1 WHERE id = $2', [newStatus, riderId]);
+    // Update ride status in database
+    await db.query('UPDATE ride_requests SET status = $1 WHERE id = $2', [newStatus, targetRideId]);
 
-    // Instantly notify the Driver's dashboard to decrease the UI counter
-    io.to(`vehicle_${vehicleId}`).emit('qr_scanned', {
-      riderId,
-      newStatus,
-      message: actionMessage
-    });
+    const activeVehicleId = scannedVehicleId || ride.assigned_vehicle_id || 1;
+    const currentLoc = scannedStop || (actionType === 'BOARDING' ? ride.pickup_location : ride.dropoff_location);
 
-    res.json({ success: true, newStatus, message: actionMessage });
-  } catch (error) {
-    console.error('QR Scan Error:', error.message);
-    res.status(500).json({ error: 'Failed to process QR scan' });
-  }
-};
-
-const cancelRide = async (req, res) => {
-  try {
-    const { rideId } = req.body;
-    await db.query("UPDATE ride_requests SET status = 'CANCELLED' WHERE id = $1", [rideId]);
-    res.json({ success: true, message: 'Booking cancelled' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to cancel' });
-  }
-};
-
-const markNoShow = async (req, res) => {
-  try {
-    const { rideId } = req.body;
-
-    const rideRes = await db.query(
-      "UPDATE ride_requests SET status = 'NO_SHOW' WHERE id = $1 RETURNING student_id", 
-      [rideId]
+    // Calculate remaining boarding and dropping counts for this stop from DB
+    const remBoardingRes = await db.query(
+      "SELECT id FROM ride_requests WHERE assigned_vehicle_id = $1 AND pickup_location = $2 AND status IN ('ASSIGNED', 'REQUESTED')",
+      [activeVehicleId, currentLoc]
     );
-    if (rideRes.rows.length === 0) return res.status(404).json({ error: 'Ride not found' });
-    
-    const studentId = rideRes.rows[0].student_id;
-    const userRes = await db.query('SELECT penalty_count, last_penalty_date FROM users WHERE id = $1', [studentId]);
-    const user = userRes.rows[0];
+    const remDroppingRes = await db.query(
+      "SELECT id FROM ride_requests WHERE assigned_vehicle_id = $1 AND dropoff_location = $2 AND status = 'PICKED_UP'",
+      [activeVehicleId, currentLoc]
+    );
 
-    const PENALTY_THRESHOLD = 3;
-    const DAYS_TO_RESET = 7;
-    const now = new Date();
-    
-    let newCount = user.penalty_count;
-    
-    if (user.last_penalty_date) {
-      const daysSinceLast = (now - new Date(user.last_penalty_date)) / (1000 * 60 * 60 * 24);
-      if (daysSinceLast > DAYS_TO_RESET) newCount = 0;
+    const remainingBoarding = remBoardingRes.rows.length;
+    const remainingDropping = remDroppingRes.rows.length;
+    const isGoodToGo = remainingBoarding === 0 && remainingDropping === 0;
+
+    // Instantly notify the Driver's dashboard
+    if (io) {
+      io.to(`vehicle_${activeVehicleId}`).emit('qr_scanned', {
+        rideId: targetRideId,
+        actionType,
+        newStatus,
+        location: currentLoc,
+        remainingBoarding,
+        remainingDropping,
+        isGoodToGo,
+        message: actionMessage
+      });
+
+      // Also notify student
+      io.emit(`ride_status_${targetRideId}`, {
+        status: newStatus,
+        message: actionMessage
+      });
+
+      if (ride.student_id) {
+        io.to(`student_${ride.student_id}`).emit('ride_status_update', {
+          status: newStatus,
+          message: actionMessage
+        });
+      }
     }
-
-    newCount += 1;
-    const shouldBlock = newCount >= PENALTY_THRESHOLD;
-    
-    // Set the unblock date exactly 7 days from right now
-    const blockedUntil = shouldBlock ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) : null;
-
-    await db.query(
-      'UPDATE users SET penalty_count = $1, last_penalty_date = $2, is_blocked = $3, blocked_until = $4 WHERE id = $5',
-      [newCount, now, shouldBlock, blockedUntil, studentId]
-    );
-
-    res.json({ 
-      success: true, 
-      message: shouldBlock ? 'User blocked for 1 week.' : `Penalty applied. Count: ${newCount}` 
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to process no-show' });
-  }
-};
-
-const scanStudentQR = async (req, res) => {
-  try {
-    const { rideId } = req.body; // Extracted from the student's scanned QR code
-
-    // 1. Find the active ride request
-    const rideRes = await db.query(
-      "SELECT * FROM ride_requests WHERE id = $1 AND status = 'REQUESTED'",
-      [rideId]
-    );
-
-    if (rideRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Active ride request not found or already processed.' });
-    }
-
-    // 2. Mark the ride as successfully completed/boarded
-    await db.query(
-      "UPDATE ride_requests SET status = 'COMPLETED' WHERE id = $1",
-      [rideId]
-    );
-
-    res.json({ 
-      success: true, 
-      message: 'QR verified successfully! Student checked into the vehicle.' 
-    });
-  } catch (error) {
-    console.error('QR Scan Error:', error.message);
-    res.status(500).json({ error: 'Failed to process QR scan' });
-  }
-};
-
-const getDriverPendingRides = async (req, res) => {
-  try {
-    // Fetch all ride requests that are currently pending along with student details
-    const ridesRes = await db.query(`
-      SELECT r.id AS ride_id, r.pickup_location, r.dropoff_location, r.status, r.created_at,
-             u.id AS student_id, u.name AS student_name, u.roll_number, u.email
-      FROM ride_requests r
-      JOIN users u ON r.student_id = u.id
-      WHERE r.status = 'REQUESTED'
-      ORDER BY r.created_at ASC
-    `);
 
     res.json({
       success: true,
-      pending_riders: ridesRes.rows
+      newStatus,
+      actionType,
+      scannedStop: currentLoc,
+      remainingBoarding,
+      remainingDropping,
+      isGoodToGo,
+      message: actionMessage
     });
+
   } catch (error) {
-    console.error('Fetch Pending Rides Error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch pending riders' });
+    console.error('Scan QR Error:', error.message);
+    res.status(500).json({ error: 'Failed to process QR scan: ' + error.message });
   }
 };
-module.exports = { requestRide, scanQR ,logDemandForML,cancelRide, markNoShow, scanStudentQR, getDriverPendingRides };
+
+// 6. Cancel Ride Request
+const cancelRide = async (req, res) => {
+  try {
+    const { rideId } = req.body;
+    const targetRideId = rideId || (req.user && req.user.id ? (
+      (await db.query("SELECT id FROM ride_requests WHERE student_id = $1 AND status IN ('REQUESTED', 'ASSIGNED') ORDER BY id DESC LIMIT 1", [req.user.id])).rows[0]?.id
+    ) : null);
+
+    if (!targetRideId) {
+      return res.status(404).json({ error: 'No active ride found to cancel.' });
+    }
+
+    await db.query("UPDATE ride_requests SET status = 'CANCELLED' WHERE id = $1", [targetRideId]);
+
+    const io = req.app.get('socketio');
+    if (io) {
+      io.emit(`ride_status_${targetRideId}`, {
+        status: 'CANCELLED',
+        message: 'Ride request cancelled.'
+      });
+    }
+
+    res.json({ success: true, message: 'Ride request cancelled successfully.' });
+  } catch (error) {
+    console.error('Cancel Ride Error:', error.message);
+    res.status(500).json({ error: 'Failed to cancel ride: ' + error.message });
+  }
+};
+
+module.exports = {
+  requestRide,
+  getBatchStatus,
+  forceDispatchBatch,
+  getStudentActiveRide,
+  scanQR,
+  cancelRide
+};

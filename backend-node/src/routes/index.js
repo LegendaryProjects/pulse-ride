@@ -1,32 +1,52 @@
 const express = require('express');
-const { requestRide, scanStudentQR, cancelRide, getDriverPendingRides } = require('../controllers/ride.controller');
-const { completeStop, toggleJobStatus } = require('../controllers/vehicle.controller');
-const { getCampusNodes, getLiveFleet, getRideStatus } = require('../controllers/data.controller');
+const {
+  requestRide,
+  scanQR,
+  cancelRide,
+  getStudentActiveRide,
+  getBatchStatus,
+  forceDispatchBatch
+} = require('../controllers/ride.controller');
+const {
+  toggleJobStatus,
+  reachStop,
+  completeStop,
+  getDriverVehicleState
+} = require('../controllers/vehicle.controller');
+const {
+  getCampusNodes,
+  getLiveFleet,
+  getRideStatus,
+  getHotspotPredictions
+} = require('../controllers/data.controller');
 const authRoutes = require('./auth.routes');
 const { verifyToken, requireRole } = require('../middleware/auth.middleware');
-const { validateStopRequest } = require('../middleware/validator.middleware');
+
 const router = express.Router();
 
-// Public Routes
+// 1. Public Endpoints
 router.use('/auth', authRoutes);
-router.get('/health', (req, res) => res.json({ status: 'Backend is fully operational' }));
-
-// Map & Data (Both Students and Drivers can view - Publicly accessible)
+router.get('/health', (req, res) => res.json({ status: 'Backend is fully operational', timestamp: new Date().toISOString() }));
 router.get('/map/nodes', getCampusNodes);
 router.get('/fleet/live', getLiveFleet);
+router.get('/ride/batch-status', getBatchStatus);
+router.post('/ride/force-dispatch', forceDispatchBatch);
 router.get('/ride/:rideId', getRideStatus);
+router.get('/ml/hotspots', getHotspotPredictions);
 
-// Protected Routes (Requires valid JWT below this line)
+// 2. Protected Routes (JWT Required)
 router.use(verifyToken);
 
-// Student Actions
+// Student Endpoints
 router.post('/ride/request', requireRole('STUDENT'), requestRide);
+router.get('/ride/student/active', requireRole('STUDENT'), getStudentActiveRide);
 router.post('/ride/cancel', requireRole('STUDENT'), cancelRide);
+router.post('/ride/scan-qr', scanQR); // Accessible by both student and driver
 
-// Driver Actions & Queue
-router.get('/driver/pending-rides', requireRole('DRIVER'), getDriverPendingRides);
-router.post('/ride/scan-qr', requireRole('DRIVER'), scanStudentQR);
-router.post('/vehicle/complete-stop', requireRole('DRIVER'), validateStopRequest, completeStop);
+// Driver Endpoints
+router.get('/driver/vehicle', requireRole('DRIVER'), getDriverVehicleState);
 router.post('/vehicle/toggle-status', requireRole('DRIVER'), toggleJobStatus);
+router.post('/vehicle/reach-stop', requireRole('DRIVER'), reachStop);
+router.post('/vehicle/complete-stop', requireRole('DRIVER'), completeStop);
 
 module.exports = router;
